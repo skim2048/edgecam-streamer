@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+message Frame {
+    repeated int32 shape = 1;
+    bytes frame = 2;
+}
+
+service AnalyzerService {
+    rpc Deidentify (Frame) returns (Frame);
+}
+
+// pip3 install grpcio-tools
+// python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. frame.proto
+// cp frame_pb2.py ../src/grpc/frame.py
+// cp frame_pb2_grpc.py ../src/grpc/framegrpc.py
+// -------------------------------------------------------------------------------
+// NOTE: MODIFY: framegrpc.py
+//   [BEFORE]  from tools import frame_pb2 as frame__pb2
+//   [AFTER]   from src.grpc import frame as frame__pb2

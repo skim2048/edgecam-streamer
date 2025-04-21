@@ -1,0 +1,28 @@
+{
+    "chain": {
+        "video": {
+            "H264": {
+                "decode_set": ["rtph264depay", "h264parse", "avdec_h264"],
+                "encode_set": ["x264enc"]
+            },
+            "H265": {
+                "decode_set": ["rtph265depay", "h265parse", "avdec_h265"],
+                "encode_set": ["x265enc"]
+            }
+        },
+        "audio": {
+            "PCMU": {
+                "decode_set": ["rtppcmudepay", "mulawdec"],
+                "encode_set": ["mulawenc"]
+            },
+            "PCMA": {
+                "decode_set": ["rtppcmadepay", "alawdec"],
+                "encode_set": ["alawenc"]
+            },
+            "[DO-NOT-USE] MPEG4-GENERIC": {
+                "decode_set": ["rtpmp4adepay", "aacparse", "avdec_aac"],
+                "encode_set": ["avenc_aac", "aacparse"]
+            }
+        }
+    }
+}
