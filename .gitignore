@@ -33,3 +33,4 @@ logs/
 
 # Etc.
 tmp.json
+*.mkv
