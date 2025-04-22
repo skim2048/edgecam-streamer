@@ -1,19 +1,21 @@
 import json
 import time
 import threading
-from datetime import datetime
+# from datetime import datetime
 from typing import Any
 from dataclasses import dataclass, fields
 
 import cv2
+import grpc
 import numpy as np
 from loguru import logger
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib
 
-from src.buffer import EvictingQueue
 from src.task import SingleThreadTask
+from src.buffer import EvictingQueue
+from src.grpc import frame_pb2, frame_pb2_grpc
 
 
 Gst.init(None)
@@ -43,12 +45,18 @@ class Pair():
 
 
 def draw_circle(img: np.ndarray):
-    # dummy code
     if img.ndim != 3:
         logger.warning("img.ndim != 3")
         return
     cy, cx = (np.array(img.shape[:2])/2).astype(int)
     cv2.circle(img, (cx, cy), 30, (0, 255, 0), 5)
+
+
+def deidentify(stub, frame):
+    response = stub.Deidentify(
+        frame_pb2.Frame(shape=list(frame.shape), frame=frame.tobytes()), timeout=5.0)
+    frame = np.frombuffer(response.frame, dtype=np.uint8).reshape(response.shape)
+    return frame
 
 
 def extract_codec(location: str, timeout: int=10) -> Pair:
@@ -280,7 +288,10 @@ class VideoAudioEncoder():
             desc += "mux. \n"
 
         desc += "matroskamux name=mux ! "
-        desc += f"filesink location={datetime.now().strftime('%Y%m%d_%H%M%S')}.mkv \n"
+        # <-- TODO: FAKE SINK
+        desc += "fakesink \n"
+        # desc += f"filesink location={datetime.now().strftime('%Y%m%d_%H%M%S')}.mkv \n"
+        # -->
 
         self._pipe = Gst.parse_launch(desc)
         self._vsrc = self._pipe.get_by_name("vsrc")
@@ -337,6 +348,15 @@ class RTSPStreamer():
         self._video_feeder: SingleThreadTask | None = None
         self._audio_feeder: SingleThreadTask | None = None
 
+        self._ws_queue: EvictingQueue | None = None
+
+        self._channel = None
+        self._stub = None
+
+    @property
+    def websocket_queue(self) -> EvictingQueue | None:
+        return self._ws_queue
+
     def _process_frames(self):
         blob = self._decoder.video_queue.get()
         frame_yuv, pts, dts, duration = blob
@@ -345,9 +365,15 @@ class RTSPStreamer():
             h, w = frame_bgr.shape[:2]
             self._caps_str.video = f"video/x-raw,format=I420,width={w},height={h}"
             self._caps_ready.set()
-        # TODO START
-        draw_circle(frame_bgr)
-        # TODO END
+        # <-- TODO: DE-IDENTIFICATION
+        # draw_circle(frame_bgr)
+        frame_bgr = deidentify(self._stub, frame_bgr)
+        # -->
+        # <-- TODO: PUT WEBSOCKET QUEUE
+        _, jpg_buffer = cv2.imencode(".jpg", frame_bgr)
+        jpg_bytes = jpg_buffer.tobytes()
+        self._ws_queue.put(jpg_bytes)
+        # -->
         frame_yuv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2YUV_I420)
         frame_bytes = frame_yuv.tobytes()
         blob = (frame_bytes, pts, dts, duration)
@@ -385,6 +411,11 @@ class RTSPStreamer():
         self._decoder.start(location, codec)
 
         if self._decoder.video_queue:
+            # < -- TODO: gRPC, WEBSOCKET
+            self._channel = grpc.insecure_channel("0.0.0.0:12932")
+            self._stub = frame_pb2_grpc.AnalyzerServiceStub(self._channel)
+            self._ws_queue = EvictingQueue()
+            # -->
             self._frame_queue = EvictingQueue()
             self._frame_processor = SingleThreadTask("frame_processor")
             self._frame_processor.start(self._process_frames)
@@ -427,3 +458,8 @@ class RTSPStreamer():
         if self._decoder:
             self._decoder.stop()
             self._decoder = None
+
+        if self._channel is not None:
+            self._channel.close()
+            self._channel = None
+        self._stub = None

@@ -16,4 +16,4 @@ service AnalyzerService {
 // -------------------------------------------------------------------------------
 // NOTE: MODIFY: framegrpc.py
 //   [BEFORE]  from tools import frame_pb2 as frame__pb2
-//   [AFTER]   from src.grpc import frame as frame__pb2
+//   [AFTER]   from src.grpc import frame_pb2 as frame__pb2
