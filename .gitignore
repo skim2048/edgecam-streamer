@@ -30,3 +30,6 @@ logs/
 *.swp
 *~
 *.bak
+
+# Etc.
+tmp.json
